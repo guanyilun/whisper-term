@@ -57,8 +57,10 @@ audiocapture --app org.mozilla.firefox | whisper-term --engine parakeet
 ### Options
 
 ```
---engine {parakeet,streaming,whisper}   Transcription engine (default: streaming)
+--engine {parakeet,streaming,whisper}   Transcription engine (default: parakeet)
 --mic                                    Capture from microphone
+--v2                                     Use Parakeet v2 (English-only, 600M)
+--v3                                     Use Parakeet v3 (multilingual, 600M) [default]
 --chunk SECONDS                          Chunk duration for offline engines (default: 5.0)
 --quiet, -q                              Suppress non-transcript output
 --output FILE, -o FILE                   Write transcript to file (append mode)
@@ -70,9 +72,14 @@ audiocapture --app org.mozilla.firefox | whisper-term --engine parakeet
 
 | Engine | Model | Speed | Quality | Output |
 |--------|-------|-------|---------|--------|
-| `parakeet` | Parakeet v3 600M | ~300ms/5s chunk | Best | Per-chunk |
+| `parakeet` | Parakeet 600M (v2 or v3) | ~300ms/5s chunk | Best | Per-chunk |
 | `streaming` | Parakeet EOU 120M | Real-time | Good | Word-by-word |
 | `whisper` | Whisper base.en | ~500ms/5s chunk | Good | Per-chunk |
+
+### Model versions
+
+- **v3** (default) — Multilingual, 8192 BPE tokens. Best quality for mixed-language content.
+- **v2** (`--v2`) — English-only, 1024 BPE tokens. More robust for English-only content.
 
 ### Scripting
 

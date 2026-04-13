@@ -56,14 +56,25 @@ echo "Downloading parakeet model..."
 mkdir -p models
 cd parakeet.cpp
 
+# v3 model (multilingual, default)
 if [ ! -f "models/model-600m-v3.safetensors" ]; then
     huggingface-cli download nvidia/parakeet-tdt-0.6b-v3 --include "*.nemo" --local-dir models
     pip install safetensors torch
     python scripts/convert_nemo.py models/parakeet-tdt-0.6b-v3.nemo -o models/model-600m-v3.safetensors --model 600m-tdt
     python scripts/extract_vocab.py models/parakeet-tdt-0.6b-v3.nemo -o models/vocab-v3.txt
-    echo "Model converted"
+    echo "v3 model converted"
 else
-    echo "Model already exists"
+    echo "v3 model already exists"
+fi
+
+# v2 model (English-only)
+if [ ! -f "models/model-600m.safetensors" ]; then
+    huggingface-cli download nvidia/parakeet-tdt-0.6b-v2 --include "*.nemo" --local-dir models
+    python scripts/convert_nemo.py models/parakeet-tdt-0.6b-v2.nemo -o models/model-600m.safetensors --model 600m-tdt
+    python scripts/extract_vocab.py models/parakeet-tdt-0.6b-v2.nemo -o models/vocab-600m.txt
+    echo "v2 model converted"
+else
+    echo "v2 model already exists"
 fi
 
 cd "$ROOT"

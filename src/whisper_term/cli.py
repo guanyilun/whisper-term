@@ -67,7 +67,12 @@ def run_whisper_cli(wav_path: str, model_path: str, language: str, timestamps: b
 def run_parakeet_cli(wav_path: str, model_path: str, vocab_path: str, timestamps: bool) -> str:
     """Run parakeet CLI on a WAV file and return the transcription text."""
     # Auto-detect model type from filename
-    model_type = "tdt-600m" if "600m" in model_path else "tdt-ctc-110m"
+    if "v3" in model_path:
+        model_type = "tdt-600m"
+    elif "600m" in model_path:
+        model_type = "tdt-600m-v2"
+    else:
+        model_type = "tdt-ctc-110m"
     cmd = [
         "parakeet",
         model_path,
@@ -233,12 +238,13 @@ def run_stdin_persistent(model_path: str, vocab_path: str, model_type: str, chun
                 buf = b""
 
                 rms = np.sqrt(np.mean(pcm ** 2))
-                if rms < 0.005:
+                if rms < 0.003:
                     continue
 
-                # Normalize
+                # Only normalize quiet audio (e.g. mic input)
+                # App audio is usually already at good levels
                 peak = np.max(np.abs(pcm))
-                if peak > 0:
+                if peak > 0 and peak < 0.1:
                     pcm = pcm / peak * 0.9
 
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -600,13 +606,23 @@ def main() -> None:
     parser.add_argument(
         "--engine", "-e",
         choices=["whisper", "parakeet", "streaming"],
-        default="streaming",
-        help="Transcription engine (default: streaming parakeet EOU)",
+        default="parakeet",
+        help="Transcription engine (default: parakeet)",
     )
     parser.add_argument(
         "--vocab",
         default=None,
         help="Path to vocab.txt for parakeet engine",
+    )
+    parser.add_argument(
+        "--v2",
+        action="store_true",
+        help="Use parakeet v2 (English-only, 600M)",
+    )
+    parser.add_argument(
+        "--v3",
+        action="store_true",
+        help="Use parakeet v3 (multilingual, 600M) [default]",
     )
     parser.add_argument(
         "--quiet", "-q",
@@ -670,16 +686,22 @@ def main() -> None:
         return
 
     if engine == "parakeet":
-        # Auto-detect parakeet model and vocab
+        # Determine version: --v2 flag, or default to v3
+        use_v2 = args.v2 and not args.v3
+
         if model_path is None:
-            candidates = [
-                "parakeet.cpp/models/model-600m-v3.safetensors",
-                "parakeet.cpp/models/model-600m.safetensors",
-                "parakeet.cpp/models/model.safetensors",
-                "models/model-600m-v3.safetensors",
-                "models/model-600m.safetensors",
-                "models/model.safetensors",
-            ]
+            if use_v2:
+                candidates = [
+                    "parakeet.cpp/models/model-600m.safetensors",
+                    "models/model-600m.safetensors",
+                ]
+            else:
+                candidates = [
+                    "parakeet.cpp/models/model-600m-v3.safetensors",
+                    "models/model-600m-v3.safetensors",
+                    "parakeet.cpp/models/model-600m.safetensors",
+                    "models/model-600m.safetensors",
+                ]
             for c in candidates:
                 if os.path.exists(c):
                     model_path = c
@@ -688,14 +710,18 @@ def main() -> None:
                 print("Error: parakeet model not found. Run convert_nemo.py first.", file=sys.stderr)
                 sys.exit(1)
         if not vocab_path:
-            candidates = [
-                "parakeet.cpp/models/vocab-v3.txt",
-                "parakeet.cpp/models/vocab-600m.txt",
-                "parakeet.cpp/models/vocab.txt",
-                "models/vocab-v3.txt",
-                "models/vocab-600m.txt",
-                "models/vocab.txt",
-            ]
+            if use_v2:
+                candidates = [
+                    "parakeet.cpp/models/vocab-600m.txt",
+                    "models/vocab-600m.txt",
+                ]
+            else:
+                candidates = [
+                    "parakeet.cpp/models/vocab-v3.txt",
+                    "models/vocab-v3.txt",
+                    "parakeet.cpp/models/vocab-600m.txt",
+                    "models/vocab-600m.txt",
+                ]
             for c in candidates:
                 if os.path.exists(c):
                     vocab_path = c
@@ -722,13 +748,23 @@ def main() -> None:
 
     if args.mic:
         if engine == "parakeet":
-            model_type = "tdt-600m" if "600m" in model_path else "tdt-ctc-110m"
+            if "v3" in model_path:
+                model_type = "tdt-600m"
+            elif "600m" in model_path:
+                model_type = "tdt-600m-v2"
+            else:
+                model_type = "tdt-ctc-110m"
             run_mic_persistent(model_path, vocab_path, model_type, args.chunk)
         else:
             run_mic_mode(model_path, args.language, args.timestamps, args.chunk)
     else:
         if engine == "parakeet":
-            model_type = "tdt-600m" if "600m" in model_path else "tdt-ctc-110m"
+            if "v3" in model_path:
+                model_type = "tdt-600m"
+            elif "600m" in model_path:
+                model_type = "tdt-600m-v2"
+            else:
+                model_type = "tdt-ctc-110m"
             run_stdin_persistent(model_path, vocab_path, model_type, args.chunk)
         else:
             run_stdin_mode(model_path, args.language, args.timestamps, args.chunk, engine, vocab_path)
