@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.egg-info/
+*.pyc
+dist/
+build/
+
+# Swift
+audiocapture/.build/
+
+# parakeet.cpp (cloned by setup script)
+parakeet.cpp/
+
+# Models (large files, downloaded separately)
+models/
+
+# Transcripts
+transcript.txt
+
+# macOS
+.DS_Store
