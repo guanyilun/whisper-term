@@ -26,6 +26,14 @@ if ! grep -q "server" parakeet.cpp/examples/CMakeLists.txt 2>/dev/null; then
     echo "add_subdirectory(server)" >> parakeet.cpp/examples/CMakeLists.txt
 fi
 
+# Apply blank_id fix and v2 config patch
+BLANK_PATCH="$ROOT/patches/parakeet-blank-id-v2.patch"
+if [ -f "$BLANK_PATCH" ]; then
+    cd parakeet.cpp
+    git apply --check "$BLANK_PATCH" 2>/dev/null && git apply "$BLANK_PATCH" && echo "Applied blank_id/v2 patch" || echo "Patch already applied or not needed"
+    cd "$ROOT"
+fi
+
 # Fix atomics detection for macOS
 ATOMICS_CMAKE="parakeet.cpp/third_party/axiom/third_party/highway/cmake/FindAtomics.cmake"
 if [ -f "$ATOMICS_CMAKE" ] && ! grep -q "APPLE.*return" "$ATOMICS_CMAKE"; then

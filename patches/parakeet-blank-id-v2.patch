@@ -1,0 +1,126 @@
+diff --git a/examples/CMakeLists.txt b/examples/CMakeLists.txt
+index 11ee03a..d345ec7 100644
+--- a/examples/CMakeLists.txt
++++ b/examples/CMakeLists.txt
+@@ -13,3 +13,4 @@ add_subdirectory(nemotron)
+ add_subdirectory(diarize)
+ add_subdirectory(diarized-transcription)
+ add_subdirectory(c-api)
++add_subdirectory(server)
+diff --git a/examples/cli/main.cpp b/examples/cli/main.cpp
+index 66d299d..8803cea 100644
+--- a/examples/cli/main.cpp
++++ b/examples/cli/main.cpp
+@@ -1084,7 +1084,7 @@ int main(int argc, char *argv[]) {
+                 use_gpu, use_fp16, show_timestamps, boost_phrases, boost_score,
+                 use_ctc_beam, beam_width, lm_path, lm_weight, use_tdt_beam,
+                 vad_weights_path, vad_threshold);
+-        } else if (model_type == "tdt-600m") {
++        } else if (model_type == "tdt-600m" || model_type == "tdt-600m-v2") {
+             if (audio_paths.size() > 1) {
+                 return run_tdt_600m_batch(weights_path, audio_paths, vocab_path,
+                                           use_gpu, use_fp16, show_timestamps,
+diff --git a/include/parakeet/api/transcribe.hpp b/include/parakeet/api/transcribe.hpp
+index 750b78d..72fabc5 100644
+--- a/include/parakeet/api/transcribe.hpp
++++ b/include/parakeet/api/transcribe.hpp
+@@ -579,12 +579,14 @@ class TDTTranscriber {
+             lm.load(opts.lm_path);
+         }
+ 
++        int blank_id = config_.prediction.vocab_size - 1;
+         TranscribeResult result;
+ 
+         if (opts.timestamps) {
+             if (opts.decoder == Decoder::TDT_BEAM) {
+                 TDTBeamSearchOptions bs_opts;
+                 bs_opts.beam_width = opts.beam_width;
++                bs_opts.blank_id = blank_id;
+                 bs_opts.lm = lm.loaded() ? &lm : nullptr;
+                 bs_opts.lm_weight = opts.lm_weight;
+                 bs_opts.pieces =
+@@ -601,9 +603,10 @@ class TDTTranscriber {
+                 auto all_ts = use_boost
+                                   ? tdt_greedy_decode_with_timestamps_boosted(
+                                         model_, encoder_out, config_.durations,
+-                                        trie, opts.boost_score)
++                                        trie, opts.boost_score, blank_id)
+                                   : tdt_greedy_decode_with_timestamps(
+-                                        model_, encoder_out, config_.durations);
++                                        model_, encoder_out, config_.durations,
++                                        blank_id);
+                 if (!all_ts.empty()) {
+                     result.timestamped_tokens = all_ts[0];
+                     for (const auto &t : result.timestamped_tokens) {
+@@ -626,6 +629,7 @@ class TDTTranscriber {
+             if (opts.decoder == Decoder::TDT_BEAM) {
+                 TDTBeamSearchOptions bs_opts;
+                 bs_opts.beam_width = opts.beam_width;
++                bs_opts.blank_id = blank_id;
+                 bs_opts.lm = lm.loaded() ? &lm : nullptr;
+                 bs_opts.lm_weight = opts.lm_weight;
+                 bs_opts.pieces =
+@@ -643,9 +647,9 @@ class TDTTranscriber {
+                     use_boost
+                         ? tdt_greedy_decode_boosted(model_, encoder_out,
+                                                     config_.durations, trie,
+-                                                    opts.boost_score)
++                                                    opts.boost_score, blank_id)
+                         : tdt_greedy_decode(model_, encoder_out,
+-                                            config_.durations);
++                                            config_.durations, blank_id);
+                 if (!all_tokens.empty()) {
+                     result.token_ids = all_tokens[0];
+                     if (tokenizer_.loaded()) {
+diff --git a/include/parakeet/models/config.hpp b/include/parakeet/models/config.hpp
+index 27b93dc..fc8a956 100644
+--- a/include/parakeet/models/config.hpp
++++ b/include/parakeet/models/config.hpp
+@@ -199,6 +199,27 @@ inline TDTConfig make_tdt_600m_config() {
+     return cfg;
+ }
+ 
++// nvidia/parakeet-tdt-0.6b-v2 (600M params, English-only, 128 mel bins)
++inline TDTConfig make_tdt_600m_v2_config() {
++    TDTConfig cfg;
++    cfg.encoder.mel_bins = 128;
++    cfg.encoder.hidden_size = 1024;
++    cfg.encoder.num_layers = 24;
++    cfg.encoder.num_heads = 8;
++    cfg.encoder.ffn_intermediate = 4096;
++    cfg.encoder.subsampling_channels = 256;
++    cfg.encoder.conv_kernel_size = 9;
++    cfg.prediction.vocab_size = 1025; // 1024 BPE + 1 blank
++    cfg.prediction.pred_hidden = 640;
++    cfg.prediction.num_lstm_layers = 2;
++    cfg.joint.encoder_hidden = 1024;
++    cfg.joint.pred_hidden = 640;
++    cfg.joint.joint_hidden = 640;
++    cfg.joint.vocab_size = 1025;
++    cfg.durations = {0, 1, 2, 3, 4};
++    return cfg;
++}
++
+ // nvidia/parakeet-rnnt-0.6b (600M params, English RNNT)
+ inline RNNTConfig make_rnnt_600m_config() {
+     RNNTConfig cfg;
+diff --git a/src/decode/vocab.cpp b/src/decode/vocab.cpp
+index 9ed7ee7..e56a31e 100644
+--- a/src/decode/vocab.cpp
++++ b/src/decode/vocab.cpp
+@@ -31,8 +31,8 @@ std::string Tokenizer::decode(const std::vector<int> &token_ids) const {
+ 
+     for (int id : token_ids) {
+         // Token IDs are 0-indexed: ID N -> pieces_[N]
++        // Skip blank token (last ID = vocab_size - 1) and out-of-range IDs
+         if (id < 0 || id >= static_cast<int>(pieces_.size())) {
+-            result += "[" + std::to_string(id) + "]";
+             continue;
+         }
+ 
+diff --git a/third_party/axiom b/third_party/axiom
+--- a/third_party/axiom
++++ b/third_party/axiom
+@@ -1 +1 @@
+-Subproject commit 1171ee82958f26a07fc9d9b29268ef7a109ff5bc
++Subproject commit 1171ee82958f26a07fc9d9b29268ef7a109ff5bc-dirty
