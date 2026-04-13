@@ -109,24 +109,11 @@ whisper-term/
 │       └── main.swift
 ├── parakeet-server/        # Custom C++ persistent inference server
 │   └── main.cpp
-├── emacs/                  # Emacs integration (experimental)
-│   └── whisper-term.el
 ├── scripts/
 │   └── setup.sh            # One-command setup
 ├── Makefile
 └── pyproject.toml
 ```
-
-## Emacs Integration (Experimental)
-
-Copy `emacs/whisper-term.el` to your Doom Emacs config:
-
-```elisp
-;; In ~/.doom.d/config.el
-(load! "path/to/whisper-term.el")
-```
-
-Commands: `whisper-term-start`, `whisper-term-stop`, `whisper-term-capture-app`.
 
 ## License
 
